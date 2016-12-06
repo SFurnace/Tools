@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import os
+import argparse
+import subprocess
+
+parser = argparse.ArgumentParser(description='This is a small tool for count lines from files in a folder. By default, it will try to use `file` command to decide whether a file should be counted.')
+parser.add_argument('-r', dest='recursive', action='store_true', default=False, help='whether to count recursively')
+parser.add_argument('-e', dest='ext', nargs='+', default=None, help='specify file extensions which should be counted')
+parser.add_argument(dest='folder', nargs='*', default=['.'], help='specify target folder')
+parser.add_argument('-n', dest='n_ext', nargs='+', default=None, help='specify file extensions which should not be counted')
+
+args = parser.parse_args()
+num = 0
+
+def judge(f):
+    if args.n_ext is not None and any(map(lambda e: f.endswith(e), args.n_ext)):
+        return False
+    elif args.ext is not None:
+        if any(map(lambda e: f.endswith(e), args.ext)):
+            return True
+        else:
+            return False
+    else:
+        result = subprocess.run(['file', '-b', f], stdout=subprocess.PIPE)
+        return result.returncode == 0 and b'text' in result.stdout
+
+def counter(folder):
+    folder = os.path.expanduser(folder)
+    if os.path.exists(folder):
+        for f in os.scandir(folder):
+            if f.is_file() and judge(f.path):
+                with open(f.path) as file:
+                    global num
+                    num += len(file.readlines())
+            elif f.is_dir() and args.recursive:
+                counter(f.path)
+
+if __name__ == "__main__":
+    os.chdir('/Users/LL/Documents/WorkSpace/Alexander')
+    for f in args.folder:
+        counter(f)
+    print(args.folder, '\n', num)

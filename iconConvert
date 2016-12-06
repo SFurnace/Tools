@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import argparse
+from os import remove
+from os.path import dirname, isdir, join, exists
+from PIL import Image
+from collections import namedtuple
+
+parser = argparse.ArgumentParser(description='Convert an image to icon files.')
+parser.add_argument('-s', metavar='source', required=True, help='source path')
+parser.add_argument('-t', metavar='target', help='target path')
+args = parser.parse_args()
+
+# 原始图片
+image = Image.open(args.s)
+
+# 保存地址
+path = ''
+if args.t is None:
+    path = dirname(args.s)
+elif isdir(args.t):
+    path = args.t
+else:
+    path = dirname(args.t)
+
+# 生成图片的参数
+name = 'Icon_'
+targets = []
+target = namedtuple('target', ['name', 'size', 'number'])
+sizes = (29, 40, 58, 76, 80, 87, 120, 152, 167, 180)
+number = (1, 1, 2, 1, 2, 1, 2, 1, 1, 1)
+for s, n in zip(sizes, number):
+    targets.append(target(name=name + str(s), size=s, number=n))
+
+# 转换
+for t in targets:
+    newImage = image.resize((t.size, t.size))
+    for x in range(t.number):
+        if x == 0:
+            filename = join(path, t.name + '.png')
+            if exists(filename):
+                remove(filename)
+            newImage.save(filename)
+        else:
+            filename = join(path, t.name + 'b.png')
+            if exists(filename):
+                remove(filename)
+            newImage.save(filename)

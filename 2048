@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import time
+import curses
+from collections import deque
+from copy import deepcopy
+from random import randint
+from string import Template
+
+curses.initscr()
+curses.curs_set(False)
+
+panel = '''
+     +----+----+----+----+
+     |$c00|$c01|$c02|$c03|
+     +----+----+----+----+
+     |$c10|$c11|$c12|$c13|
+     +----+----+----+----+
+     |$c20|$c21|$c22|$c23|
+     +----+----+----+----+
+     |$c30|$c31|$c32|$c33|
+     +----+----+----+----+
+       QUIT(Q) RESTART(r)
+ UP(w) DOWN(s) LEFT(a) RIGHT(d)
+'''
+
+piece = [['', '', '', ''],
+         ['', '', '', ''],
+         ['', '', '', ''],
+         ['', '', '', '']]
+
+
+def remove_all(line, value):
+    try:
+        for x in range(len(line)):
+            line.remove(value)
+    except ValueError:
+        pass
+
+
+def compressed(line):
+    remove_all(line, '')
+    index = 0
+    while index < len(line) - 1:
+        while index + 1 < len(line) and line[index] == line[index + 1]:
+            line[index] = str(int(line[index]) * 2)
+            line[index + 1] = ''
+            remove_all(line, '')
+        index += 1
+    while len(line) < 4:
+        line.append('')
+
+
+class Game:
+    def __init__(self):
+        self.window = None
+        self.over = False
+        self.pad = curses.newpad(14, 31)
+        self.panel = Template(panel)
+        self.piece = deepcopy(piece)
+        self.old_piece = None
+        self.history = deque(maxlen=20)
+        self.action = {'Q': self.quit, 'r': self.restart, 'u': self.redo,
+                       'q': self.twist_left, 'e': self.twist_right,
+                       'w': self.up, 'k': self.up, 'KEY_UP': self.up,
+                       's': self.down, 'j': self.down, 'KEY_DOWN': self.down,
+                       'a': self.left, 'h': self.left, 'KEY_LEFT': self.left,
+                       'l': self.right, 'd': self.right, 'KEY_RIGHT': self.right}
+
+    def start(self, sender):
+        self.window = sender
+        for x in range(3):
+            self.generate()
+        self.display()
+
+        i, method = None, None
+        while True:
+            i = self.window.getkey()
+            method = self.action.get(i)
+            if i == 'Q' or i == 'r':
+                break
+            elif not self.over and method is not None:
+                self.old_piece = self.piece
+                method()
+            else:
+                pass
+            self.display()
+        self.action.get(i)()
+
+    def display(self):
+        self.pad.erase()
+        s = self.panel.substitute(**{'c{line}{column}'.format(line=l, column=c): self.piece[l][c].center(4)
+                                     for l in range(4) for c in range(4)})
+        self.pad.addstr(s)
+        self.pad.refresh(0, 0, curses.LINES // 2 - 8, curses.COLS // 2 - 16, curses.LINES - 1, curses.COLS - 1)
+
+    def generate(self):
+        char = ('2', '2', '2', '4')[randint(0, 3)]
+        while True:
+            line, column = randint(0, 3), randint(0, 3)
+            if self.piece[line][column] == '':
+                self.piece[line][column] = char
+                break
+            if all(map(lambda x: '' not in x, self.piece)):
+                break
+
+    def twist_left(self):
+        data = self.piece
+        self.piece = [[data[line][column] for line in range(4)] for column in range(3, -1, -1)]
+
+    def twist_right(self):
+        data = self.piece
+        self.piece = [[data[line][column] for line in range(3, -1, -1)] for column in range(4)]
+
+    def restart(self):
+        self.over = False
+        self.old_piece = None
+        self.history.clear()
+        self.piece = deepcopy(piece)
+        self.window.erase()
+        self.window.refresh()
+        self.start(self.window)
+
+    def judge_over(self):
+        for i in range(4):
+            for j in range(4):
+                if i - 1 > -1 and self.piece[i][j] == self.piece[i - 1][j]:
+                    return False
+                if i + 1 < 4 and self.piece[i][j] == self.piece[i + 1][j]:
+                    return False
+                if j - 1 > -1 and self.piece[i][j] == self.piece[i][j - 1]:
+                    return False
+                if j + 1 < 4 and self.piece[i][j] == self.piece[i][j + 1]:
+                    return False
+        return True
+
+    def redo(self):
+        try:
+            self.piece = self.history.pop()
+        except IndexError:
+            pass
+
+    def up(self):
+        columns = ([self.piece[line][column] for line in range(4)] for column in range(4))
+        new_piece = deepcopy(self.piece)
+        for n, column in enumerate(columns):
+            compressed(column)
+            for x in range(4):
+                new_piece[x][n] = column[x]
+        if new_piece != self.piece:
+            self.piece = new_piece
+            self.history.append(self.old_piece)
+            self.generate()
+        elif all(('' not in x for x in self.piece)) and self.judge_over():
+            self.game_over()
+        else:
+            pass
+
+    def down(self):
+        self.twist_left()
+        self.twist_left()
+        self.up()
+        self.twist_left()
+        self.twist_left()
+
+    def left(self):
+        self.twist_right()
+        self.up()
+        self.twist_left()
+
+    def right(self):
+        self.twist_left()
+        self.up()
+        self.twist_right()
+
+    def game_over(self):
+        self.over = True
+        self.pad.erase()
+        self.pad.addstr('GAME OVER!')
+        self.pad.refresh(0, 0, curses.LINES // 2 - 9, curses.COLS // 2 - 6, curses.LINES // 2 - 8,
+                         curses.COLS // 2 + 11)
+
+    def quit(self):
+        self.pad.erase()
+        self.pad.addstr('\n\n\n\n\n\n\n          Goodbye!')
+        self.pad.refresh(0, 0, curses.LINES // 2 - 9, curses.COLS // 2 - 16, curses.LINES - 1, curses.COLS - 1)
+        time.sleep(1)
+
+
+if __name__ == '__main__':
+    game = Game()
+    curses.wrapper(game.start)
