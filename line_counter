@@ -36,7 +36,6 @@ def counter(folder):
                 counter(f.path)
 
 if __name__ == "__main__":
-    os.chdir('/Users/LL/Documents/WorkSpace/Alexander')
     for f in args.folder:
         counter(f)
     print(args.folder, '\n', num)
